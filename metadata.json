@@ -1,0 +1,5 @@
+{
+  "name": "Robby Flow - Tattoo CRM",
+  "description": "CRM and automation platform for tattoo artists with AI-powered estimates and Kanban pipeline.",
+  "requestFramePermissions": ["camera", "microphone"]
+}
