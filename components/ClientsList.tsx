@@ -125,7 +125,7 @@ export default function ClientsList({ onSelectClient }: ClientsListProps) {
                 <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Cliente</th>
                 <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Contacto</th>
                 <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Estado</th>
-                <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Proyecto</th>
+                <th className="hidden md:table-cell px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Proyecto</th>
                 <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Acciones</th>
               </tr>
             </thead>
@@ -153,7 +153,7 @@ export default function ClientsList({ onSelectClient }: ClientsListProps) {
                         </div>
                         <div>
                           <p className="font-bold text-gray-900">{client.nombre}</p>
-                          <p className="text-[10px] text-gray-400 font-medium">ID: {client.id.slice(0, 8)}</p>
+                          <p className="text-[10px] text-gray-400 font-medium hidden md:block">ID: {client.id.slice(0, 8)}</p>
                         </div>
                       </div>
                     </td>
@@ -183,7 +183,7 @@ export default function ClientsList({ onSelectClient }: ClientsListProps) {
                         {getStatusLabel(client.status)}
                       </span>
                     </td>
-                    <td className="px-6 py-5">
+                    <td className="hidden md:table-cell px-6 py-5">
                       <div className="max-w-xs">
                         <p className="text-xs font-bold text-gray-900 line-clamp-1">{client.idea_tatuaje}</p>
                         <p className="text-[10px] text-gray-400 font-medium">{client.zona} • {client.tamano_cm} cm</p>

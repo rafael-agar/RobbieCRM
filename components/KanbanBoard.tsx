@@ -206,7 +206,7 @@ export default function KanbanBoard({ onSelectClient, refreshTrigger }: KanbanBo
         {KANBAN_COLUMNS.map((column) => (
           <div
             key={column.id}
-            className="flex-shrink-0 w-80 flex flex-col"
+            className="flex-shrink-0 w-[280px] md:w-80 flex flex-col"
             onDragOver={handleDragOver}
             onDrop={(e) => handleDrop(e, column.id)}
           >

@@ -149,7 +149,7 @@ export default function LeadForm() {
             <label className="text-sm font-medium text-gray-700">Nombre Completo</label>
             <input
               {...register('nombre')}
-              className={`w-full px-4 py-3 rounded-xl border ${errors.nombre ? 'border-red-500' : 'border-gray-200'} focus:ring-2 focus:ring-black/5 outline-none transition-all`}
+              className={`w-full px-4 py-4 rounded-xl border ${errors.nombre ? 'border-red-500' : 'border-gray-200'} focus:ring-2 focus:ring-black/5 outline-none transition-all`}
               placeholder="Ej: Juan Pérez"
             />
             {errors.nombre && <p className="text-xs text-red-500">{errors.nombre.message}</p>}
@@ -160,7 +160,7 @@ export default function LeadForm() {
             <input
               {...register('email')}
               type="email"
-              className={`w-full px-4 py-3 rounded-xl border ${errors.email ? 'border-red-500' : 'border-gray-200'} focus:ring-2 focus:ring-black/5 outline-none transition-all`}
+              className={`w-full px-4 py-4 rounded-xl border ${errors.email ? 'border-red-500' : 'border-gray-200'} focus:ring-2 focus:ring-black/5 outline-none transition-all`}
               placeholder="tu@email.com"
             />
             {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
@@ -170,7 +170,7 @@ export default function LeadForm() {
             <label className="text-sm font-medium text-gray-700">Teléfono / WhatsApp</label>
             <input
               {...register('telefono')}
-              className={`w-full px-4 py-3 rounded-xl border ${errors.telefono ? 'border-red-500' : 'border-gray-200'} focus:ring-2 focus:ring-black/5 outline-none transition-all`}
+              className={`w-full px-4 py-4 rounded-xl border ${errors.telefono ? 'border-red-500' : 'border-gray-200'} focus:ring-2 focus:ring-black/5 outline-none transition-all`}
               placeholder="+54 9 11 ..."
             />
             {errors.telefono && <p className="text-xs text-red-500">{errors.telefono.message}</p>}
@@ -180,7 +180,7 @@ export default function LeadForm() {
             <label className="text-sm font-medium text-gray-700">Instagram (Opcional)</label>
             <input
               {...register('instagram')}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-black/5 outline-none transition-all"
+              className="w-full px-4 py-4 rounded-xl border border-gray-200 focus:ring-2 focus:ring-black/5 outline-none transition-all"
               placeholder="@usuario"
             />
           </div>
@@ -191,7 +191,7 @@ export default function LeadForm() {
           <textarea
             {...register('idea_tatuaje')}
             rows={4}
-            className={`w-full px-4 py-3 rounded-xl border ${errors.idea_tatuaje ? 'border-red-500' : 'border-gray-200'} focus:ring-2 focus:ring-black/5 outline-none transition-all resize-none`}
+            className={`w-full px-4 py-4 rounded-xl border ${errors.idea_tatuaje ? 'border-red-500' : 'border-gray-200'} focus:ring-2 focus:ring-black/5 outline-none transition-all resize-none`}
             placeholder="Describe lo que quieres tatuarte, elementos, significado..."
           />
           {errors.idea_tatuaje && <p className="text-xs text-red-500">{errors.idea_tatuaje.message}</p>}
@@ -202,7 +202,7 @@ export default function LeadForm() {
             <label className="text-sm font-medium text-gray-700">Zona del Cuerpo</label>
             <input
               {...register('zona')}
-              className={`w-full px-4 py-3 rounded-xl border ${errors.zona ? 'border-red-500' : 'border-gray-200'} focus:ring-2 focus:ring-black/5 outline-none transition-all`}
+              className={`w-full px-4 py-4 rounded-xl border ${errors.zona ? 'border-red-500' : 'border-gray-200'} focus:ring-2 focus:ring-black/5 outline-none transition-all`}
               placeholder="Ej: Antebrazo"
             />
             {errors.zona && <p className="text-xs text-red-500">{errors.zona.message}</p>}
@@ -212,7 +212,7 @@ export default function LeadForm() {
             <label className="text-sm font-medium text-gray-700">Tamaño (cm)</label>
             <input
               {...register('tamano_cm')}
-              className={`w-full px-4 py-3 rounded-xl border ${errors.tamano_cm ? 'border-red-500' : 'border-gray-200'} focus:ring-2 focus:ring-black/5 outline-none transition-all`}
+              className={`w-full px-4 py-4 rounded-xl border ${errors.tamano_cm ? 'border-red-500' : 'border-gray-200'} focus:ring-2 focus:ring-black/5 outline-none transition-all`}
               placeholder="Ej: 15x10"
             />
             {errors.tamano_cm && <p className="text-xs text-red-500">{errors.tamano_cm.message}</p>}
@@ -222,7 +222,7 @@ export default function LeadForm() {
             <label className="text-sm font-medium text-gray-700">Estilo</label>
             <select
               {...register('estilo')}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-black/5 outline-none transition-all bg-white"
+              className="w-full px-4 py-4 rounded-xl border border-gray-200 focus:ring-2 focus:ring-black/5 outline-none transition-all bg-white"
             >
               <option value="">Seleccionar estilo</option>
               <option value="Realismo">Realismo</option>

@@ -30,7 +30,12 @@ export default function Dashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'kanban' | 'form' | 'calendar' | 'clients' | 'settings'>('kanban');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth >= 768;
+    }
+    return true;
+  });
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
@@ -70,8 +75,16 @@ export default function Dashboard() {
 
   return (
     <div className="flex h-screen bg-gray-50 font-sans text-gray-900 overflow-hidden">
+      {/* Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-30 md:hidden" 
+          onClick={() => setIsSidebarOpen(false)} 
+        />
+      )}
+
       {/* Sidebar */}
-      <AnimatePresence mode="wait">
+      <AnimatePresence>
         {isSidebarOpen && (
           <motion.aside
             initial={{ x: -280 }}
@@ -91,7 +104,7 @@ export default function Dashboard() {
 
             <nav className="flex-1 p-4 space-y-2">
               <button
-                onClick={() => setActiveTab('kanban')}
+                onClick={() => { setActiveTab('kanban'); if (window.innerWidth < 768) setIsSidebarOpen(false); }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                   activeTab === 'kanban' 
                     ? 'bg-black text-white shadow-lg shadow-black/10' 
@@ -102,7 +115,7 @@ export default function Dashboard() {
                 <span className="font-semibold">Pipeline</span>
               </button>
               <button
-                onClick={() => setActiveTab('clients')}
+                onClick={() => { setActiveTab('clients'); if (window.innerWidth < 768) setIsSidebarOpen(false); }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                   activeTab === 'clients' 
                     ? 'bg-black text-white shadow-lg shadow-black/10' 
@@ -113,7 +126,7 @@ export default function Dashboard() {
                 <span className="font-semibold">Clientes</span>
               </button>
               <button
-                onClick={() => setActiveTab('calendar')}
+                onClick={() => { setActiveTab('calendar'); if (window.innerWidth < 768) setIsSidebarOpen(false); }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                   activeTab === 'calendar' 
                     ? 'bg-black text-white shadow-lg shadow-black/10' 
@@ -124,7 +137,7 @@ export default function Dashboard() {
                 <span className="font-semibold">Calendario</span>
               </button>
               <button
-                onClick={() => setActiveTab('form')}
+                onClick={() => { setActiveTab('form'); if (window.innerWidth < 768) setIsSidebarOpen(false); }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                   activeTab === 'form' 
                     ? 'bg-black text-white shadow-lg shadow-black/10' 
@@ -154,7 +167,7 @@ export default function Dashboard() {
               </div>
               
               <button
-                onClick={() => setActiveTab('settings')}
+                onClick={() => { setActiveTab('settings'); if (window.innerWidth < 768) setIsSidebarOpen(false); }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                   activeTab === 'settings' 
                     ? 'bg-black text-white shadow-lg shadow-black/10' 
