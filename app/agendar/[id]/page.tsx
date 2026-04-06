@@ -318,7 +318,23 @@ export default function AgendarPage() {
         .select('*')
         .eq('client_id', id)
         .order('appointment_date', { ascending: true });
-      setExistingAppointments(updatedAppts || []);
+      
+      const newApptsList = updatedAppts || [];
+      setExistingAppointments(newApptsList);
+
+      const newScheduledAppts = newApptsList.filter(a => a.status === 'scheduled');
+      if (newScheduledAppts.length >= totalSessions) {
+        // Send confirmation email
+        try {
+          await fetch('/api/emails', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clientId: client.id, type: 'appointment_confirmed' }),
+          });
+        } catch (emailErr) {
+          console.error('Error sending confirmation email:', emailErr);
+        }
+      }
 
       setIsSuccess(true);
       toast.success('¡Cita agendada con éxito!');

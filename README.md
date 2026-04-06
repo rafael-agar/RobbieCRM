@@ -7,6 +7,7 @@ Centraliza la información del cliente, los detalles del diseño, las imágenes 
 ## ✨ Características Principales
 
 *   **Tablero Kanban (Pipeline):** Visualiza y mueve a tus clientes a través de diferentes etapas: *Nuevo Lead, Cotización, Pago Pendiente, Agendado, Completado*, etc.
+*   **Canal de Origen:** Rastrea si el lead proviene de tu sitio web, Instagram, WhatsApp, etc.
 *   **Formulario Público de Cotización:** Un enlace que puedes compartir en tu Instagram o web para que los clientes envíen sus ideas, zonas del cuerpo, tamaños y suban imágenes de referencia.
 *   **Agendamiento Inteligente:** 
     *   Los clientes pueden elegir su fecha y hora basándose en tu disponibilidad real.
@@ -69,11 +70,16 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=tu_supabase_anon_key
 
 ### 4. Configurar la Base de Datos (Supabase)
 Ve al **SQL Editor** en tu panel de Supabase y ejecuta el contenido del archivo `supabase-schema.sql`. Esto creará las siguientes tablas y políticas de seguridad (RLS):
-*   `clients`: Almacena los leads y proyectos.
+*   `clients`: Almacena los leads y proyectos (incluyendo el campo `channel`).
 *   `appointments`: Registra las citas agendadas.
 *   `messages`: Historial de comunicaciones.
 *   `payments`: Historial de transacciones (señas y pagos finales).
 *   `settings`: Configuraciones del sistema (horarios del artista).
+
+Si ya tenías la base de datos creada, asegúrate de añadir la columna `channel` ejecutando:
+```sql
+ALTER TABLE clients ADD COLUMN channel TEXT DEFAULT 'Manual';
+```
 
 *Nota: Asegúrate de que el bucket de Storage llamado `references` esté creado y configurado como público para que las imágenes de referencia funcionen correctamente.*
 

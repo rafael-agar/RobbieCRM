@@ -19,6 +19,7 @@ export async function POST(req: Request) {
     let clientId = body.clientId;
     let emailType = body.type;
     let customPrice = body.customPrice;
+    let customMessage = body.customMessage;
 
     if (body.record && body.record.id) {
       clientId = body.record.id;
@@ -57,6 +58,16 @@ export async function POST(req: Request) {
       .single();
 
     const activeQuote = quote || {};
+
+    // 1.2 Obtener las citas programadas
+    const { data: appointments } = await supabase
+      .from('appointments')
+      .select('*')
+      .eq('client_id', clientId)
+      .eq('status', 'scheduled')
+      .order('appointment_date', { ascending: true });
+
+    const scheduledAppointments = appointments || [];
 
     let subject = '';
     let html = '';
@@ -223,23 +234,75 @@ export async function POST(req: Request) {
         break;
 
       case 'appointment_confirmed':
-        const dateObj = new Date(client.appointment_date + 'T00:00:00');
-        const formattedDate = dateObj.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-        const calendarLink = `https://www.google.com/calendar/render?action=TEMPLATE&text=Tatuaje+con+Robby+Flow&dates=${client.appointment_date?.replace(/-/g, '')}T${client.appointment_time?.replace(':', '')}00/${client.appointment_date?.replace(/-/g, '')}T${Math.min(23, parseInt(client.appointment_time?.split(':')[0] || '0') + Number(client.appointment_duration || 2)).toString().padStart(2, '0')}${client.appointment_time?.split(':')[1] || '00'}00&details=Sesión+de+tatuaje+agendada+con+Robby+Flow.+Idea:+${encodeURIComponent(client.idea_tatuaje)}&location=Robby+Flow+Studio&sf=true&output=xml`;
+        subject = `✅ ¡Tu agenda está lista! - Robby Flow`;
+        
+        let appointmentsHtml = '';
+        if (scheduledAppointments.length > 0) {
+          appointmentsHtml = scheduledAppointments.map((appt: any, idx: number) => {
+            const apptDate = new Date(appt.appointment_date);
+            const datePart = appt.appointment_date.split('T')[0];
+            const timePart = appt.appointment_date.split('T')[1].substring(0, 5);
+            const duration = appt.duration || client.appointment_duration || 2;
+            
+            const formattedDate = apptDate.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+            
+            const startDateTime = appt.appointment_date.replace(/-/g, '').replace(/:/g, '').replace('T', 'T');
+            const endHour = Math.min(23, parseInt(timePart.split(':')[0]) + Number(duration));
+            const endDateTime = datePart.replace(/-/g, '') + 'T' + endHour.toString().padStart(2, '0') + timePart.split(':')[1] + '00';
+            
+            const calendarLink = `https://www.google.com/calendar/render?action=TEMPLATE&text=Tatuaje+con+Robby+Flow+(Sesión+${idx + 1})&dates=${startDateTime.replace(/:/g, '')}00/${endDateTime}&details=Sesión+de+tatuaje+agendada+con+Robby+Flow.+Idea:+${encodeURIComponent(client.idea_tatuaje)}&location=Robby+Flow+Studio&sf=true&output=xml`;
 
-        subject = `✅ ¡Cita Confirmada! - Robby Flow`;
+            return `
+              <div style="background: #f9f9f9; padding: 20px; border-radius: 12px; margin: 15px 0; border-left: 4px solid #000;">
+                <p style="margin: 0 0 10px 0; font-size: 12px; font-weight: bold; text-transform: uppercase; color: #666;">Sesión ${idx + 1}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Fecha:</strong> <span style="text-transform: capitalize;">${formattedDate}</span></p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Hora:</strong> ${timePart} hs</p>
+                <p style="margin: 5px 0; font-size: 14px; color: #555;"><strong>Duración aprox:</strong> ${duration} horas</p>
+                <div style="margin-top: 15px;">
+                  <a href="${calendarLink}" style="display: inline-block; background: #4285F4; color: #fff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 12px;">📅 Añadir a Google Calendar</a>
+                </div>
+              </div>
+            `;
+          }).join('');
+        } else {
+          const dateObj = new Date(client.appointment_date + 'T00:00:00');
+          const formattedDate = dateObj.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+          const calendarLink = `https://www.google.com/calendar/render?action=TEMPLATE&text=Tatuaje+con+Robby+Flow&dates=${client.appointment_date?.replace(/-/g, '')}T${client.appointment_time?.replace(':', '')}00/${client.appointment_date?.replace(/-/g, '')}T${Math.min(23, parseInt(client.appointment_time?.split(':')[0] || '0') + Number(client.appointment_duration || 2)).toString().padStart(2, '0')}${client.appointment_time?.split(':')[1] || '00'}00&details=Sesión+de+tatuaje+agendada+con+Robby+Flow.+Idea:+${encodeURIComponent(client.idea_tatuaje)}&location=Robby+Flow+Studio&sf=true&output=xml`;
+          
+          appointmentsHtml = `
+            <div style="background: #f9f9f9; padding: 20px; border-radius: 12px; margin: 15px 0; border-left: 4px solid #000;">
+              <p style="margin: 5px 0; font-size: 16px;"><strong>Fecha:</strong> <span style="text-transform: capitalize;">${formattedDate}</span></p>
+              <p style="margin: 5px 0; font-size: 16px;"><strong>Hora:</strong> ${client.appointment_time} hs</p>
+              <div style="margin-top: 15px;">
+                <a href="${calendarLink}" style="display: inline-block; background: #4285F4; color: #fff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 12px;">📅 Añadir a Google Calendar</a>
+              </div>
+            </div>
+          `;
+        }
+
         html = `
           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 10px; padding: 20px;">
-            <h1 style="color: #000;">¡Cita Confirmada!</h1>
-            <p>Tu sesión de tatuaje ha sido agendada. Recibirás un recordatorio por email antes de la cita.</p>
-            <div style="background: #f9f9f9; padding: 20px; border-radius: 12px; margin: 25px 0;">
-              <p style="margin: 5px 0; font-size: 16px;"><strong>Fecha confirmada:</strong> <span style="text-transform: capitalize;">${formattedDate}</span></p>
-              <p style="margin: 5px 0; font-size: 16px;"><strong>Hora confirmada:</strong> ${client.appointment_time} hs</p>
-            </div>
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="${calendarLink}" style="display: inline-block; background: #4285F4; color: #fff; padding: 12px 25px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px;">📅 Añadir a mi Google Calendar</a>
-            </div>
-            <p style="margin-top: 30px; font-size: 14px; color: #666;">Si necesitas reprogramar, por favor contacta a Robby directamente.</p>
+            <h1 style="color: #000;">¡Tu agenda está lista, ${client.nombre}! 🎉</h1>
+            <p>Tus sesiones de tatuaje han sido agendadas exitosamente. A continuación encontrarás los detalles de tu agenda:</p>
+            
+            ${appointmentsHtml}
+            
+            <h3 style="margin-top: 30px;">Recordatorios Importantes:</h3>
+            <ul>
+              <li><strong>Descanso y Alimentación:</strong> Duerme bien la noche anterior y come una comida completa antes de tu sesión.</li>
+              <li><strong>Ropa:</strong> Usa ropa cómoda y oscura que permita fácil acceso a la zona a tatuar.</li>
+              <li><strong>Puntualidad:</strong> Por favor llega a tiempo. Si te retrasas más de 2 horas, la sesión podría ser cancelada.</li>
+              <li><strong>Acompañantes:</strong> Por favor, ven solo a tu cita para mantener un ambiente enfocado.</li>
+            </ul>
+
+            <p>Our studio, Nest of Thorns, is located at:</p>
+            <p>📍 200 Bath St, Glasgow G2 4HG</p>
+            
+            <p style="margin-top: 30px; font-size: 14px; color: #666;">Si necesitas reprogramar o tienes alguna pregunta, por favor responde a este correo o contáctame por Instagram con al menos 48 horas de anticipación.</p>
+            
+            <p style="margin-top: 30px;">¡Nos vemos pronto!</p>
+            <p>Best,<br>Robbie</p>
+            <p style="margin-top: 30px; font-size: 12px; color: #888;">Copyright © 2026 Robbieflaviani, All rights reserved.</p>
           </div>
         `;
         break;
@@ -259,6 +322,19 @@ export async function POST(req: Request) {
             </div>
             <p style="margin-top: 30px;">Puedes responder a este correo o contactarnos por Instagram si prefieres.</p>
             <p style="margin-top: 30px; font-size: 12px; color: #888;">¡Espero que tengas un gran día!</p>
+          </div>
+        `;
+        break;
+
+      case 'direct_message':
+        subject = `Mensaje de Robby Flow 🖋️`;
+        html = `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 10px; padding: 20px;">
+            <h2 style="color: #000;">¡Hola ${client.nombre}!</h2>
+            <div style="margin-top: 20px; padding: 20px; background-color: #f9f9f9; border-radius: 10px; white-space: pre-wrap; line-height: 1.6; color: #333;">${customMessage || ''}</div>
+            <p style="margin-top: 30px; font-size: 14px;">Puedes responder directamente a este correo si tienes alguna duda.</p>
+            <p style="margin-top: 20px; font-size: 14px;">Best,<br>Robbie</p>
+            <p style="margin-top: 30px; font-size: 12px; color: #888;">Copyright © 2026 Robbieflaviani, All rights reserved.</p>
           </div>
         `;
         break;
@@ -293,7 +369,9 @@ export async function POST(req: Request) {
       quote: `Cotización enviada por un monto de ${currencySymbol}${customPrice || activeQuote.price_artist || activeQuote.ai_suggested_price || '0'}.`,
       confirmation: 'Email de confirmación de pago recibido enviado.',
       scheduling: 'Email con link de agendamiento enviado al cliente.',
+      appointment_confirmed: 'Email de confirmación de agenda enviado al cliente.',
       followup: 'Email de seguimiento (Follow-up) enviado automáticamente.',
+      direct_message: customMessage || 'Mensaje directo enviado al cliente.',
     };
 
     await supabase.from('messages').insert({

@@ -60,6 +60,8 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
   const [newApptDate, setNewApptDate] = useState('');
   const [newApptTime, setNewApptTime] = useState('');
   const [newApptDuration, setNewApptDuration] = useState(2);
+  const [customMessage, setCustomMessage] = useState('');
+  const [isSendingCustomMessage, setIsSendingCustomMessage] = useState(false);
 
   const currentCurrency = activeQuote?.currency || editedClient.currency || 'USD';
   const CurrencyIcon = currentCurrency === 'EUR' ? Euro : currentCurrency === 'GBP' ? PoundSterling : DollarSign;
@@ -435,6 +437,33 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
       }
     } finally {
       setIsSendingEmail(false);
+    }
+  };
+
+  const handleSendCustomMessage = async () => {
+    if (!customMessage.trim()) {
+      toast.error('El mensaje no puede estar vacío.');
+      return;
+    }
+    if (!client.email) {
+      toast.error('El cliente no tiene un email registrado.');
+      return;
+    }
+
+    setIsSendingCustomMessage(true);
+    try {
+      await sendEmail(client.id, 'direct_message', undefined, customMessage);
+      toast.success('Mensaje enviado correctamente.');
+      setCustomMessage('');
+      fetchMessages();
+    } catch (err: any) {
+      if (err.message === 'RESTRICTED_RECIPIENT') {
+        toast.warning('Restricción de Resend: No se pudo enviar el email al cliente porque tu dominio no está verificado.');
+      } else {
+        toast.error('Error al enviar el mensaje: ' + err.message);
+      }
+    } finally {
+      setIsSendingCustomMessage(false);
     }
   };
 
@@ -1269,6 +1298,30 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
             <h3 className="font-bold text-gray-900">Historial de Mensajes</h3>
           </div>
 
+          {/* Send Direct Message Form */}
+          <div className="bg-white p-4 rounded-xl border border-gray-200 mb-6">
+            <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Enviar Mensaje Directo (Email)</h4>
+            <div className="space-y-3">
+              <textarea
+                value={customMessage}
+                onChange={(e) => setCustomMessage(e.target.value)}
+                placeholder="Escribe un mensaje para el cliente. Se enviará como un email..."
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-black resize-none"
+                rows={3}
+              />
+              <div className="flex justify-end">
+                <button
+                  onClick={handleSendCustomMessage}
+                  disabled={isSendingCustomMessage || !customMessage.trim()}
+                  className="bg-black hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                  {isSendingCustomMessage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  Enviar Mensaje
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-3">
             {isLoadingMessages ? (
               <div className="flex items-center justify-center py-8">
@@ -1282,9 +1335,13 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
                       msg.message_type === 'quote' ? 'bg-purple-100 text-purple-700' :
                       msg.message_type === 'welcome' ? 'bg-blue-100 text-blue-700' :
                       msg.message_type === 'scheduling' ? 'bg-green-100 text-green-700' :
+                      msg.message_type === 'appointment_confirmed' ? 'bg-emerald-100 text-emerald-700' :
+                      msg.message_type === 'direct_message' ? 'bg-orange-100 text-orange-700' :
                       'bg-gray-100 text-gray-700'
                     }`}>
-                      {msg.message_type}
+                      {msg.message_type === 'direct_message' ? 'Mensaje Directo' : 
+                       msg.message_type === 'appointment_confirmed' ? 'Agenda Confirmada' : 
+                       msg.message_type}
                     </span>
                     <span className="text-[10px] text-gray-400 font-medium">
                       {format(new Date(msg.sent_at), 'dd MMM, HH:mm', { locale: es })}

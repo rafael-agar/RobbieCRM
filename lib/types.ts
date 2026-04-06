@@ -71,7 +71,7 @@ export interface Appointment {
 export interface MessageLog {
   id: string;
   client_id: string;
-  message_type: 'welcome' | 'quote' | 'reminder' | 'followup' | 'scheduling';
+  message_type: 'welcome' | 'quote' | 'reminder' | 'followup' | 'scheduling' | 'direct_message' | 'appointment_confirmed';
   channel: 'WhatsApp' | 'Instagram' | 'SMS' | 'Email' | 'System';
   content?: string;
   sent_at: string;

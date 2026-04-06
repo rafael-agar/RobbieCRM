@@ -1,11 +1,11 @@
-export async function sendEmail(clientId: string, type: 'quote' | 'welcome' | 'confirmation' | 'scheduling' | 'followup', customPrice?: number) {
+export async function sendEmail(clientId: string, type: 'quote' | 'welcome' | 'confirmation' | 'scheduling' | 'followup' | 'direct_message' | 'appointment_confirmed', customPrice?: number, customMessage?: string) {
   try {
     const response = await fetch('/api/emails', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ clientId, type, customPrice }),
+      body: JSON.stringify({ clientId, type, customPrice, customMessage }),
     });
 
     // Intentar parsear como JSON, si falla, lanzar error con el texto
