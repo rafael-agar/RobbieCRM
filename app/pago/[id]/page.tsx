@@ -13,13 +13,16 @@ import {
   ShieldCheck, 
   Clock, 
   DollarSign,
+  Euro,
+  PoundSterling,
   AlertCircle,
   Loader2,
   User,
   Calendar,
   FileText,
   Building2,
-  ArrowRight
+  ArrowRight,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
@@ -27,6 +30,7 @@ import Image from 'next/image';
 export default function PagoPage() {
   const { id } = useParams();
   const [client, setClient] = useState<Client | null>(null);
+  const [quote, setQuote] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [isPaid, setIsPaid] = useState(false);
   const [isAccepted, setIsAccepted] = useState(false);
@@ -41,30 +45,44 @@ export default function PagoPage() {
   });
 
   useEffect(() => {
-    const fetchClient = async () => {
-      const { data, error } = await supabase
+    const fetchClientAndQuote = async () => {
+      // 1. Fetch client
+      const { data: clientData, error: clientError } = await supabase
         .from('clients')
         .select('*')
         .eq('id', id)
         .single();
 
-      if (!error && data) {
-        setClient(data);
-        if (data.deposit_paid) setIsPaid(true);
+      if (!clientError && clientData) {
+        setClient(clientData);
+        if (clientData.deposit_paid) setIsPaid(true);
         if (
-          data.status === 'accepted' || 
-          data.status === 'payment_review' || 
-          data.status === 'payment_confirmed' || 
-          data.status === 'scheduled' || 
-          data.status === 'completed'
+          clientData.status === 'accepted' || 
+          clientData.status === 'payment_review' || 
+          clientData.status === 'payment_confirmed' || 
+          clientData.status === 'scheduled' || 
+          clientData.status === 'completed'
         ) {
           setIsAccepted(true);
+        }
+
+        // 2. Fetch the most recent quote for this client
+        const { data: quoteData, error: quoteError } = await supabase
+          .from('quotes')
+          .select('*')
+          .eq('client_id', id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!quoteError && quoteData) {
+          setQuote(quoteData);
         }
       }
       setLoading(false);
     };
 
-    if (id) fetchClient();
+    if (id) fetchClientAndQuote();
   }, [id]);
 
   const handleAcceptQuote = async () => {
@@ -153,8 +171,12 @@ export default function PagoPage() {
   }
 
   const depositAmount = client.deposit_amount || 100;
-  const totalAmount = client.price_artist || client.ai_suggested_price || 0;
+  const totalAmount = quote?.price_artist || quote?.ai_suggested_price || 0;
   const remainingAmount = Math.max(0, totalAmount - depositAmount);
+
+  const currency = quote?.currency || client.currency || 'USD';
+  const currencySymbol = currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : '$';
+  const CurrencyIcon = currency === 'EUR' ? Euro : currency === 'GBP' ? PoundSterling : DollarSign;
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] py-12 px-4 sm:px-6 lg:px-8 font-sans">
@@ -215,7 +237,19 @@ export default function PagoPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-5">
+              {quote?.ai_notes && (
+                <div className="mb-10 p-6 bg-purple-50 rounded-3xl border border-purple-100">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sparkles className="w-5 h-5 text-purple-600" />
+                    <h4 className="font-bold text-purple-900 uppercase tracking-widest text-[10px]">Notas del Artista</h4>
+                  </div>
+                  <p className="text-sm text-purple-800 leading-relaxed italic">
+                    &quot;{quote.ai_notes}&quot;
+                  </p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
                 <div className="bg-gray-50 p-6 rounded-3xl border border-gray-100">
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
@@ -223,16 +257,25 @@ export default function PagoPage() {
                     </div>
                     <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Duración</p>
                   </div>
-                  <p className="text-2xl font-black text-gray-900 ml-13">{client.appointment_duration || client.ai_estimated_time} hrs</p>
+                  <p className="text-2xl font-black text-gray-900 ml-13">{client.appointment_duration || quote?.ai_estimated_time || 0} hrs</p>
+                </div>
+                <div className="bg-gray-50 p-6 rounded-3xl border border-gray-100">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                      <Calendar className="w-5 h-5 text-purple-600" />
+                    </div>
+                    <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Sesiones</p>
+                  </div>
+                  <p className="text-2xl font-black text-gray-900 ml-13">{quote?.total_sessions || 1}</p>
                 </div>
                 <div className="bg-gray-50 p-6 rounded-3xl border border-gray-100">
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                      <DollarSign className="w-5 h-5 text-green-600" />
+                      <CurrencyIcon className="w-5 h-5 text-green-600" />
                     </div>
                     <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Precio Total</p>
                   </div>
-                  <p className="text-2xl font-black text-gray-900 ml-13">${client.price_artist || client.ai_suggested_price}</p>
+                  <p className="text-2xl font-black text-gray-900 ml-13">{currencySymbol}{totalAmount}</p>
                 </div>
               </div>
             </div>
@@ -284,22 +327,22 @@ export default function PagoPage() {
                   <div className="mb-10">
                     <p className="text-sm text-gray-500 font-bold uppercase tracking-wider mb-3">Monto a Pagar (Seña)</p>
                     <h3 className="text-6xl font-black text-gray-900 tracking-tight">
-                      ${depositAmount}
+                      {currencySymbol}{depositAmount}
                     </h3>
                   </div>
 
                   <div className="space-y-5 mb-10">
                     <div className="flex items-center justify-between text-lg">
                       <span className="text-gray-500">Precio Total Tatuaje</span>
-                      <span className="font-bold text-gray-900">${totalAmount}</span>
+                      <span className="font-bold text-gray-900">{currencySymbol}{totalAmount}</span>
                     </div>
                     <div className="flex items-center justify-between text-lg">
                       <span className="text-gray-500">Reserva (Seña)</span>
-                      <span className="font-bold text-green-600">-${depositAmount}</span>
+                      <span className="font-bold text-green-600">-{currencySymbol}{depositAmount}</span>
                     </div>
                     <div className="pt-6 border-t border-gray-100 flex items-center justify-between">
                       <span className="font-bold text-gray-900 text-lg">Saldo a pagar en estudio</span>
-                      <span className="font-black text-3xl text-gray-900">${remainingAmount}</span>
+                      <span className="font-black text-3xl text-gray-900">{currencySymbol}{remainingAmount}</span>
                     </div>
                   </div>
 
@@ -343,10 +386,12 @@ export default function PagoPage() {
                           </div>
                           
                           <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Monto de la Seña ($)</label>
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Monto de la Seña ({currencySymbol})</label>
                             <div className="relative">
                               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                <DollarSign className="h-5 w-5 text-gray-400" />
+                                {client.currency === 'EUR' ? <span className="h-5 w-5 text-gray-400 flex items-center justify-center font-bold">€</span> : 
+                                 client.currency === 'GBP' ? <span className="h-5 w-5 text-gray-400 flex items-center justify-center font-bold">£</span> : 
+                                 <DollarSign className="h-5 w-5 text-gray-400" />}
                               </div>
                               <input 
                                 required

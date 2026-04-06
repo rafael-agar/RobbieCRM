@@ -35,7 +35,8 @@ export async function POST(req: Request) {
         - price_range: string (ej: "$300 - $450")
         - recommended_price: número (ej: 380)
         - notes: breve explicación técnica
-        - style_detected: el estilo que detectas (ej: "Blackwork", "Minimalista")`
+        - style_detected: el estilo que detectas (ej: "Blackwork", "Minimalista")
+        - total_sessions: número de sesiones necesarias (ej: 1 para piezas pequeñas, 2-3 para medias mangas, 4+ para espaldas completas)`
       }
     ];
 

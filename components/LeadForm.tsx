@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { sendEmail } from '@/lib/email-service';
 import { useDropzone } from 'react-dropzone';
+import { Channel } from '@/lib/types';
 import { Upload, X, Loader2, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
@@ -21,11 +22,12 @@ const formSchema = z.object({
   zona: z.string().min(2, 'Indica la zona del cuerpo'),
   tamano_cm: z.string().min(1, 'Indica el tamaño aproximado'),
   estilo: z.string().optional(),
+  currency: z.string(),
 });
 
 type FormData = z.infer<typeof formSchema>;
 
-export default function LeadForm() {
+export default function LeadForm({ defaultChannel = 'Manual' }: { defaultChannel?: Channel }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
@@ -33,6 +35,9 @@ export default function LeadForm() {
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<FormData>({
     resolver: zodResolver(formSchema),
+    defaultValues: {
+      currency: 'USD',
+    },
   });
 
   const onDrop = (acceptedFiles: File[]) => {
@@ -84,6 +89,7 @@ export default function LeadForm() {
           imagen_referencia: imageUrl,
           status: 'new_lead',
           deposit_paid: false,
+          channel: defaultChannel,
         })
         .select()
         .single();
@@ -230,6 +236,18 @@ export default function LeadForm() {
               <option value="Tradicional">Tradicional</option>
               <option value="Minimalista">Minimalista</option>
               <option value="Otro">Otro</option>
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Moneda Preferida</label>
+            <select
+              {...register('currency')}
+              className="w-full px-4 py-4 rounded-xl border border-gray-200 focus:ring-2 focus:ring-black/5 outline-none transition-all bg-white"
+            >
+              <option value="USD">USD ($) - Dólares</option>
+              <option value="EUR">EUR (€) - Euros</option>
+              <option value="GBP">GBP (£) - Libras</option>
             </select>
           </div>
         </div>

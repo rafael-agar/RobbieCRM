@@ -12,7 +12,8 @@ import {
   ChevronRight,
   Loader2,
   AlertCircle,
-  Info
+  Info,
+  ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -52,12 +53,15 @@ export default function AgendarPage() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [existingAppointments, setExistingAppointments] = useState<any[]>([]);
+  const [isValidStatus, setIsValidStatus] = useState(true);
+  const [activeQuote, setActiveQuote] = useState<any | null>(null);
 
   useEffect(() => {
     const fetchClient = async () => {
       const { data, error } = await supabase
         .from('clients')
-        .select('*')
+        .select('*, quotes(*)')
         .eq('id', id)
         .single();
 
@@ -65,8 +69,33 @@ export default function AgendarPage() {
         console.error('Error fetching client:', error);
       } else {
         setClient(data);
-        // Si ya tiene cita agendada, mostrar éxito o redirigir
-        if (data.status === 'scheduled' || data.status === 'completed') {
+        
+        // Get the latest quote
+        const quote = data.quotes?.sort((a: any, b: any) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )[0];
+        setActiveQuote(quote);
+
+        // Check if status is valid for scheduling
+        const validStatuses = ['payment_confirmed', 'scheduled', 'completed'];
+        if (!validStatuses.includes(data.status) && !data.deposit_paid) {
+          setIsValidStatus(false);
+        }
+
+        // Fetch existing appointments for this client
+        const { data: appts } = await supabase
+          .from('appointments')
+          .select('*')
+          .eq('client_id', id)
+          .order('appointment_date', { ascending: true });
+        
+        const apptsData = appts || [];
+        setExistingAppointments(apptsData);
+
+        // If all sessions are already scheduled, show success screen
+        const scheduledAppts = apptsData.filter((a: any) => a.status === 'scheduled');
+        const totalSessions = quote?.total_sessions || 1;
+        if (scheduledAppts.length >= totalSessions) {
           setIsSuccess(true);
         }
       }
@@ -153,9 +182,12 @@ export default function AgendarPage() {
 
   const isTimeSlotAvailable = (time: string) => {
     if (!client) return true;
+    const activeQuote = client.quotes?.sort((a: any, b: any) => 
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )[0];
     const [hours, minutes] = time.split(':').map(Number);
     const slotStart = hours + (minutes / 60);
-    const duration = client.appointment_duration || Number(client.ai_estimated_time) || 2;
+    const duration = client.appointment_duration || Number(activeQuote?.ai_estimated_time) || 2;
     const slotEnd = slotStart + duration;
 
     // Check if this slot overlaps with any busy slot
@@ -168,10 +200,22 @@ export default function AgendarPage() {
   const handleSchedule = async () => {
     if (!selectedDate || !selectedTime || !client) return;
 
+    // Validation: Check if already reached total sessions
+    const activeQuote = client.quotes?.sort((a: any, b: any) => 
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )[0];
+    const totalSessions = activeQuote?.total_sessions || 1;
+    const scheduledAppts = existingAppointments.filter(a => a.status === 'scheduled');
+    if (scheduledAppts.length >= totalSessions) {
+      toast.error('Ya has agendado el máximo de sesiones permitidas.');
+      setIsSuccess(true);
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const appointmentDate = format(selectedDate, 'yyyy-MM-dd');
-      const duration = client.appointment_duration || Number(client.ai_estimated_time) || 2;
+      const duration = client.appointment_duration || Number(activeQuote?.ai_estimated_time) || 2;
       
       // FINAL OVERLAP CHECK (Race Condition Prevention)
       const { data: existingAppts, error: fetchError } = await supabase
@@ -234,16 +278,47 @@ export default function AgendarPage() {
 
       if (apptError) throw apptError;
       
-      // 3. Log to messages table
+      // 3. Sync next appointment on client
+      const { data: nextAppt } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('client_id', client.id)
+        .eq('status', 'scheduled')
+        .gte('appointment_date', new Date().toISOString())
+        .order('appointment_date', { ascending: true })
+        .limit(1);
+
+      if (nextAppt && nextAppt.length > 0) {
+        const [date, time] = nextAppt[0].appointment_date.split('T');
+        await supabase
+          .from('clients')
+          .update({
+            appointment_date: date,
+            appointment_time: time.substring(0, 5),
+            appointment_duration: nextAppt[0].duration,
+            status: 'scheduled'
+          })
+          .eq('id', client.id);
+      }
+
+      // 4. Log to messages table
       await supabase
         .from('messages')
         .insert({
           client_id: client.id,
           message_type: 'scheduling',
           channel: 'System',
-          content: `Cita agendada para el ${format(selectedDate, 'dd/MM/yyyy')} a las ${selectedTime} hs.`,
+          content: `Cita agendada por el cliente para el ${format(selectedDate, 'dd/MM/yyyy')} a las ${selectedTime} hs.`,
           sent_at: new Date().toISOString()
         });
+
+      // Refresh existing appointments
+      const { data: updatedAppts } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('client_id', id)
+        .order('appointment_date', { ascending: true });
+      setExistingAppointments(updatedAppts || []);
 
       setIsSuccess(true);
       toast.success('¡Cita agendada con éxito!');
@@ -263,19 +338,34 @@ export default function AgendarPage() {
     );
   }
 
-  if (!client) {
+  if (!client || !isValidStatus) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <div className="text-center max-w-md">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold mb-2">Enlace no válido</h1>
-          <p className="text-gray-500">No pudimos encontrar tu solicitud. Por favor, contacta al artista.</p>
-        </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="max-w-md w-full bg-white p-10 rounded-[2.5rem] shadow-2xl text-center border border-gray-100"
+        >
+          <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-8">
+            <Info className="w-12 h-12 text-blue-600" />
+          </div>
+          <h2 className="text-3xl font-black text-gray-900 mb-4">¡Un momento!</h2>
+          <p className="text-gray-500 mb-8 leading-relaxed">
+            {!client ? 'No hemos podido encontrar tus datos.' : 'Todavía no puedes agendar tu cita. Debes completar el pago de la seña primero.'}
+          </p>
+          <p className="text-xs text-gray-400 font-medium">
+            Si crees que esto es un error, por favor contacta a Robby por Instagram.
+          </p>
+        </motion.div>
       </div>
     );
   }
 
   if (isSuccess) {
+    const scheduledAppts = existingAppointments.filter(a => a.status === 'scheduled');
+    const totalSessions = activeQuote?.total_sessions || 1;
+    const allSessionsScheduled = scheduledAppts.length >= totalSessions;
+
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <motion.div 
@@ -286,38 +376,74 @@ export default function AgendarPage() {
           <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-8">
             <CheckCircle2 className="w-12 h-12 text-green-600" />
           </div>
-          <h2 className="text-3xl font-black text-gray-900 mb-4">¡Cita Confirmada!</h2>
+          <h2 className="text-3xl font-black text-gray-900 mb-4">
+            {allSessionsScheduled ? '¡Proceso Completado!' : '¡Cita Agendada!'}
+          </h2>
           <p className="text-gray-500 mb-8 leading-relaxed">
-            Tu sesión de tatuaje ha sido agendada. Recibirás un recordatorio por email antes de la cita.
+            {allSessionsScheduled 
+              ? 'Has agendado todas tus sesiones. ¡Nos vemos pronto!' 
+              : `Has agendado la sesión ${scheduledAppts.length}. Todavía te faltan sesiones por agendar.`}
           </p>
-          <div className="bg-gray-50 p-6 rounded-3xl text-left mb-8 border border-gray-100">
-            <div className="flex items-center gap-3 mb-4">
-              <CalendarIcon className="w-5 h-5 text-black" />
-              <p className="font-bold text-gray-900">
-                {client.appointment_date ? format(new Date(client.appointment_date), 'EEEE d "de" MMMM', { locale: es }) : 'Fecha confirmada'}
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <Clock className="w-5 h-5 text-black" />
-              <p className="font-bold text-gray-900">
-                {client.appointment_time || 'Hora confirmada'} hs
-              </p>
-            </div>
+          
+          <div className="space-y-4 mb-8">
+            {scheduledAppts.map((appt, idx) => {
+              const apptDate = new Date(appt.appointment_date);
+              const [datePart, timePart] = appt.appointment_date.split('T');
+              const duration = appt.duration || client.appointment_duration || 2;
+              
+              // Google Calendar Link logic
+              const startDateTime = appt.appointment_date.replace(/-/g, '').replace(/:/g, '').replace('T', 'T');
+              const endHour = Math.min(23, parseInt(timePart.split(':')[0]) + Number(duration));
+              const endDateTime = datePart.replace(/-/g, '') + 'T' + endHour.toString().padStart(2, '0') + timePart.split(':')[1] + '00';
+              
+              const calendarLink = `https://www.google.com/calendar/render?action=TEMPLATE&text=Tatuaje+con+Robby+Flow+(Sesión+${idx + 1})&dates=${startDateTime.replace(/:/g, '')}00/${endDateTime}&details=Sesión+de+tatuaje+agendada+con+Robby+Flow.+Idea:+${encodeURIComponent(client.idea_tatuaje)}&location=Robby+Flow+Studio&sf=true&output=xml`;
+
+              return (
+                <div key={appt.id} className="bg-gray-50 p-6 rounded-3xl text-left border border-gray-100">
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Sesión {idx + 1}</span>
+                  </div>
+                  <div className="flex items-center gap-3 mb-2">
+                    <CalendarIcon className="w-5 h-5 text-black" />
+                    <p className="font-bold text-gray-900">
+                      {format(apptDate, "EEEE d 'de' MMMM", { locale: es })}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 mb-6">
+                    <Clock className="w-5 h-5 text-black" />
+                    <p className="font-bold text-gray-900">
+                      {format(apptDate, 'HH:mm')} hs
+                    </p>
+                  </div>
+
+                  <a 
+                    href={calendarLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full flex items-center justify-center gap-2 bg-white border-2 border-gray-100 py-3 rounded-2xl text-sm font-black text-gray-900 hover:bg-gray-100 hover:border-gray-200 transition-all"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Añadir a Google Calendar
+                  </a>
+                </div>
+              );
+            })}
           </div>
 
-          <a 
-            href={`https://www.google.com/calendar/render?action=TEMPLATE&text=Tatuaje+con+Robby+Flow&dates=${client.appointment_date?.replace(/-/g, '')}T${client.appointment_time?.replace(':', '')}00/${client.appointment_date?.replace(/-/g, '')}T${Math.min(23, parseInt(client.appointment_time?.split(':')[0] || '0') + Number(client.appointment_duration || 2)).toString().padStart(2, '0')}${client.appointment_time?.split(':')[1] || '00'}00&details=Sesión+de+tatuaje+agendada+con+Robby+Flow.+Idea:+${encodeURIComponent(client.idea_tatuaje)}&location=Robby+Flow+Studio&sf=true&output=xml`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 bg-white border-2 border-gray-100 text-gray-700 px-6 py-3 rounded-2xl font-bold hover:bg-gray-50 transition-all mb-8"
-          >
-            <CalendarIcon className="w-5 h-5 text-blue-500" />
-            Añadir a mi Google Calendar
-          </a>
-
-          <p className="text-xs text-gray-400 font-medium">
-            Si necesitas reprogramar, por favor contacta a Robby directamente.
-          </p>
+          <div className="flex flex-col gap-3">
+            {!allSessionsScheduled && (
+              <button
+                onClick={() => setIsSuccess(false)}
+                className="w-full bg-black text-white py-4 rounded-2xl font-black text-lg hover:bg-gray-800 transition-all shadow-xl shadow-black/10"
+              >
+                Agendar otra sesión
+              </button>
+            )}
+            
+            <p className="text-xs text-gray-400 font-medium mt-4">
+              Si necesitas reprogramar, por favor contacta a Robby directamente.
+            </p>
+          </div>
         </motion.div>
       </div>
     );
@@ -329,6 +455,40 @@ export default function AgendarPage() {
         <div className="text-center mb-12">
           <h1 className="text-4xl font-black tracking-tight text-gray-900 mb-3 uppercase">Agendar mi Sesión</h1>
           <p className="text-gray-500 font-medium">Selecciona el día y la hora que mejor te queden para tu tatuaje.</p>
+          
+          {activeQuote && activeQuote.total_sessions > 0 && (
+            <div className="mt-4 inline-flex items-center gap-4 bg-white px-6 py-3 rounded-2xl shadow-sm border border-gray-100">
+              <div className="text-left">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Sesiones Totales</p>
+                <p className="text-xl font-black text-gray-900">{activeQuote.total_sessions}</p>
+              </div>
+              <div className="w-px h-8 bg-gray-100" />
+              <div className="text-left">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Agendadas</p>
+                <p className="text-xl font-black text-blue-600">{existingAppointments.filter(a => a.status === 'scheduled').length}</p>
+              </div>
+              {activeQuote.total_sessions > existingAppointments.filter(a => a.status === 'scheduled').length && (
+                <>
+                  <div className="w-px h-8 bg-gray-100" />
+                  <div className="text-left">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Pendientes</p>
+                    <p className="text-xl font-black text-purple-600">{activeQuote.total_sessions - existingAppointments.filter(a => a.status === 'scheduled').length}</p>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {existingAppointments.length > 0 && (
+            <div className="mt-6 flex flex-wrap justify-center gap-2">
+              {existingAppointments.filter(a => a.status === 'scheduled').map((appt, idx) => (
+                <div key={appt.id} className="bg-blue-50 text-blue-700 px-4 py-2 rounded-full text-xs font-bold border border-blue-100 flex items-center gap-2">
+                  <CalendarIcon className="w-3 h-3" />
+                  Sesión {idx + 1}: {format(new Date(appt.appointment_date), 'dd/MM HH:mm')}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -445,7 +605,7 @@ export default function AgendarPage() {
                 <div className="bg-blue-50 p-4 rounded-2xl flex gap-3 items-start mb-6">
                   <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                   <p className="text-xs text-blue-800 leading-relaxed">
-                    Tu sesión durará aprox. <strong>{client.appointment_duration || client.ai_estimated_time} horas</strong>.
+                    Tu sesión durará aprox. <strong>{client.appointment_duration || activeQuote?.ai_estimated_time || 2} horas</strong>.
                   </p>
                 </div>
 

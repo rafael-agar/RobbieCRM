@@ -19,7 +19,9 @@ import {
   LayoutGrid,
   List as ListIcon,
   MessageSquare,
-  Calendar
+  Calendar,
+  Euro,
+  PoundSterling
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -62,11 +64,20 @@ export default function KanbanBoard({ onSelectClient, refreshTrigger }: KanbanBo
     try {
       const { data, error } = await supabase
         .from('clients')
-        .select('*')
+        .select('*, quotes(*)')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setClients(data || []);
+      
+      // Sort quotes by created_at descending for each client
+      const clientsWithSortedQuotes = (data || []).map((client: any) => ({
+        ...client,
+        quotes: client.quotes?.sort((a: any, b: any) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        ) || []
+      }));
+      
+      setClients(clientsWithSortedQuotes);
     } catch (err) {
       console.error('Error fetching clients:', err);
     } finally {
@@ -131,7 +142,10 @@ export default function KanbanBoard({ onSelectClient, refreshTrigger }: KanbanBo
     try {
       // Si se mueve a "payment_pending", enviamos el correo de cotización
       if (newStatus === 'payment_pending' && client.status !== 'payment_pending') {
-        const priceToUse = client.price_artist || client.ai_suggested_price || 0;
+        const activeQuote = client.quotes?.sort((a: any, b: any) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )[0];
+        const priceToUse = activeQuote?.price_artist || activeQuote?.ai_suggested_price || 0;
         await sendEmail(client.id, 'quote', priceToUse);
         toast.success('¡Cotización enviada automáticamente!');
       }
@@ -246,18 +260,21 @@ export default function KanbanBoard({ onSelectClient, refreshTrigger }: KanbanBo
                     </p>
 
                     <div className="flex flex-wrap gap-2 mb-3">
+                      <span className="text-[10px] bg-gray-200 text-gray-700 px-2 py-0.5 rounded uppercase tracking-wider">
+                        {client.channel}
+                      </span>
                       {client.zona && (
                         <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded uppercase tracking-wider">
                           {client.zona}
                         </span>
                       )}
-                      {client.ai_difficulty && (
+                      {client.quotes && client.quotes[0] && client.quotes[0].ai_difficulty && (
                         <span className={`text-[10px] px-2 py-0.5 rounded uppercase tracking-wider ${
-                          client.ai_difficulty === 'Alta' ? 'bg-red-50 text-red-600' :
-                          client.ai_difficulty === 'Media' ? 'bg-orange-50 text-orange-600' :
+                          client.quotes[0].ai_difficulty === 'Alta' ? 'bg-red-50 text-red-600' :
+                          client.quotes[0].ai_difficulty === 'Media' ? 'bg-orange-50 text-orange-600' :
                           'bg-green-50 text-green-600'
                         }`}>
-                          {client.ai_difficulty}
+                          {client.quotes[0].ai_difficulty}
                         </span>
                       )}
                     </div>
@@ -268,16 +285,20 @@ export default function KanbanBoard({ onSelectClient, refreshTrigger }: KanbanBo
                         {client.telefono && <Phone className="w-3.5 h-3.5" />}
                       </div>
                       <div className="flex items-center gap-2">
-                        {client.price_artist ? (
-                          <div className="flex items-center text-xs font-semibold text-green-600">
-                            <DollarSign className="w-3 h-3" />
-                            {client.price_artist}
-                          </div>
-                        ) : client.ai_suggested_price && (
-                          <div className="flex items-center text-xs font-medium text-purple-600">
-                            <DollarSign className="w-3 h-3" />
-                            {client.ai_suggested_price}
-                          </div>
+                        {client.quotes && client.quotes[0] && (
+                          <>
+                            {client.quotes[0].price_artist ? (
+                              <div className="flex items-center text-xs font-semibold text-green-600">
+                                {client.quotes[0].currency === 'EUR' ? <Euro className="w-3 h-3" /> : client.quotes[0].currency === 'GBP' ? <PoundSterling className="w-3 h-3" /> : <DollarSign className="w-3 h-3" />}
+                                {client.quotes[0].price_artist}
+                              </div>
+                            ) : client.quotes[0].ai_suggested_price && (
+                              <div className="flex items-center text-xs font-medium text-purple-600">
+                                {client.quotes[0].currency === 'EUR' ? <Euro className="w-3 h-3" /> : client.quotes[0].currency === 'GBP' ? <PoundSterling className="w-3 h-3" /> : <DollarSign className="w-3 h-3" />}
+                                {client.quotes[0].ai_suggested_price}
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>

@@ -13,15 +13,36 @@ CREATE TABLE clients (
   estilo TEXT,
   imagen_referencia TEXT,
   status TEXT DEFAULT 'new_lead',
-  price_artist NUMERIC,
   appointment_date TEXT,
   appointment_time TEXT,
   appointment_duration NUMERIC,
   deposit_paid BOOLEAN DEFAULT false,
+  deposit_amount NUMERIC,
+  payment_name TEXT,
+  payment_date TEXT,
+  payment_reference TEXT,
+  payment_method TEXT,
+  currency TEXT DEFAULT 'USD',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Tabla: quotes
+CREATE TABLE quotes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+  idea_tatuaje TEXT NOT NULL,
+  zona TEXT NOT NULL,
+  tamano_cm TEXT NOT NULL,
+  estilo TEXT,
+  imagen_referencia TEXT,
   ai_suggested_price NUMERIC,
   ai_estimated_time TEXT,
   ai_difficulty TEXT,
   ai_notes TEXT,
+  price_artist NUMERIC,
+  total_sessions INTEGER DEFAULT 1,
+  currency TEXT DEFAULT 'USD',
+  status TEXT DEFAULT 'draft', -- 'draft', 'sent', 'accepted', 'rejected'
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -48,11 +69,13 @@ CREATE TABLE messages (
 
 -- Habilitar RLS (Row Level Security)
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE quotes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 
 -- Políticas básicas (Permitir todo por ahora para desarrollo, ajustar luego)
 CREATE POLICY "Allow all for now" ON clients FOR ALL USING (true);
+CREATE POLICY "Allow all for now" ON quotes FOR ALL USING (true);
 CREATE POLICY "Allow all for now" ON appointments FOR ALL USING (true);
 CREATE POLICY "Allow all for now" ON messages FOR ALL USING (true);
 

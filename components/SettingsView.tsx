@@ -198,6 +198,26 @@ export default function SettingsView() {
               ))}
             </div>
           </section>
+
+          {/* Embed Form */}
+          <section className="space-y-4 pt-8 border-t border-gray-100">
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="font-bold text-gray-900">Embeber Formulario</h3>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">Copia este código para insertar el formulario en tu sitio web (WordPress, etc.).</p>
+            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 font-mono text-xs text-gray-700 break-all">
+              {`<iframe src="${typeof window !== 'undefined' ? window.location.origin : ''}/embed/lead-form" width="100%" height="600px" frameborder="0"></iframe>`}
+            </div>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(`<iframe src="${window.location.origin}/embed/lead-form" width="100%" height="600px" frameborder="0"></iframe>`);
+                toast.success('Código copiado al portapapeles');
+              }}
+              className="bg-black text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-gray-800 transition-all"
+            >
+              Copiar Código
+            </button>
+          </section>
         </div>
       </div>
 

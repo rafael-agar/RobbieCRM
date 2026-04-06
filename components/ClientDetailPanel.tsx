@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
-import { Client, KanbanStatus, KANBAN_COLUMNS, MessageLog, Quote, Payment } from '@/lib/types';
+import { Client, KanbanStatus, KANBAN_COLUMNS, MessageLog, Quote, Payment, Appointment } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
 import { sendEmail } from '@/lib/email-service';
 import { analyzeTattooRequest } from '@/lib/ai-service';
@@ -21,10 +21,15 @@ import {
   ChevronRight,
   ExternalLink,
   Save,
+  Edit,
   Trash2,
   Send,
   Loader2,
-  History
+  History,
+  Euro,
+  PoundSterling,
+  Plus,
+  Info
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { format } from 'date-fns';
@@ -50,6 +55,15 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
   const [isLoadingQuotes, setIsLoadingQuotes] = useState(false);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [isLoadingPayments, setIsLoadingPayments] = useState(false);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [isLoadingAppointments, setIsLoadingAppointments] = useState(false);
+  const [newApptDate, setNewApptDate] = useState('');
+  const [newApptTime, setNewApptTime] = useState('');
+  const [newApptDuration, setNewApptDuration] = useState(2);
+
+  const currentCurrency = activeQuote?.currency || editedClient.currency || 'USD';
+  const CurrencyIcon = currentCurrency === 'EUR' ? Euro : currentCurrency === 'GBP' ? PoundSterling : DollarSign;
+  const currencySymbol = currentCurrency === 'EUR' ? '€' : currentCurrency === 'GBP' ? '£' : '$';
 
   const fetchPayments = useCallback(async () => {
     setIsLoadingPayments(true);
@@ -68,6 +82,150 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
       setIsLoadingPayments(false);
     }
   }, [client.id]);
+
+  const fetchAppointments = useCallback(async () => {
+    setIsLoadingAppointments(true);
+    try {
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('client_id', client.id)
+        .order('appointment_date', { ascending: true });
+
+      if (error) throw error;
+      setAppointments(data || []);
+    } catch (error) {
+      console.error('Error fetching appointments:', error);
+    } finally {
+      setIsLoadingAppointments(false);
+    }
+  }, [client.id]);
+
+  const handleAddAppointment = async (date: string, time: string, duration: number) => {
+    if (!date || !time) {
+      toast.error('Fecha y hora son obligatorias.');
+      return;
+    }
+
+    const fullDateTime = `${date}T${time}:00`;
+    
+    try {
+      const { error } = await supabase
+        .from('appointments')
+        .insert({
+          client_id: client.id,
+          appointment_date: fullDateTime,
+          duration: duration,
+          status: 'scheduled'
+        });
+
+      if (error) throw error;
+      toast.success('Sesión agendada correctamente.');
+      fetchAppointments();
+      syncNextAppointment();
+      
+      // Log to messages
+      await supabase.from('messages').insert({
+        client_id: client.id,
+        message_type: 'scheduling',
+        channel: 'System',
+        content: `Nueva sesión agendada para el ${format(new Date(date + 'T00:00:00'), 'dd/MM/yyyy')} a las ${time} hs.`,
+        sent_at: new Date().toISOString()
+      });
+      fetchMessages();
+    } catch (error) {
+      console.error('Error adding appointment:', error);
+      toast.error('Error al agendar la sesión.');
+    }
+  };
+
+  const handleDeleteAppointment = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('appointments')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      toast.success('Sesión eliminada.');
+      fetchAppointments();
+      syncNextAppointment();
+    } catch (error) {
+      console.error('Error deleting appointment:', error);
+      toast.error('Error al eliminar la sesión.');
+    }
+  };
+
+  const handleToggleAppointmentStatus = async (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'scheduled' ? 'completed' : 'scheduled';
+    try {
+      const { error } = await supabase
+        .from('appointments')
+        .update({ status: newStatus })
+        .eq('id', id);
+
+      if (error) throw error;
+      toast.success(`Sesión marcada como ${newStatus === 'completed' ? 'completada' : 'pendiente'}.`);
+      fetchAppointments();
+      syncNextAppointment();
+    } catch (error) {
+      console.error('Error updating appointment status:', error);
+      toast.error('Error al actualizar el estado de la sesión.');
+    }
+  };
+
+  const syncNextAppointment = async () => {
+    try {
+      const { data: nextAppt } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('client_id', client.id)
+        .eq('status', 'scheduled')
+        .gte('appointment_date', new Date().toISOString())
+        .order('appointment_date', { ascending: true })
+        .limit(1);
+
+      if (nextAppt && nextAppt.length > 0) {
+        const [date, time] = nextAppt[0].appointment_date.split('T');
+        await supabase
+          .from('clients')
+          .update({
+            appointment_date: date,
+            appointment_time: time.substring(0, 5),
+            appointment_duration: nextAppt[0].duration
+          })
+          .eq('id', client.id);
+        
+        // Update local state too
+        setEditedClient(prev => ({
+          ...prev,
+          appointment_date: date,
+          appointment_time: time.substring(0, 5),
+          appointment_duration: nextAppt[0].duration
+        }));
+      } else {
+        // No scheduled future appointments
+        await supabase
+          .from('clients')
+          .update({
+            appointment_date: null,
+            appointment_time: null,
+            appointment_duration: null
+          })
+          .eq('id', client.id);
+        
+        setEditedClient(prev => ({
+          ...prev,
+          appointment_date: undefined,
+          appointment_time: undefined,
+          appointment_duration: undefined
+        }));
+      }
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error syncing next appointment:', error);
+    }
+  };
 
   const fetchQuotes = useCallback(async () => {
     setIsLoadingQuotes(true);
@@ -112,7 +270,8 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
     fetchMessages();
     fetchQuotes();
     fetchPayments();
-  }, [fetchMessages, fetchQuotes, fetchPayments]);
+    fetchAppointments();
+  }, [fetchMessages, fetchQuotes, fetchPayments, fetchAppointments]);
 
   const handleEstimate = async () => {
     setIsEstimating(true);
@@ -152,10 +311,12 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
           tamano_cm: client.tamano_cm,
           estilo: aiResult.style_detected !== 'No especificado' ? aiResult.style_detected : client.estilo,
           imagen_referencia: client.imagen_referencia,
-          ai_suggested_price: aiResult.recommended_price,
-          ai_estimated_time: aiResult.estimated_hours.toString(),
+          ai_suggested_price: aiResult.recommended_price || 0,
+          ai_estimated_time: (aiResult.estimated_hours || 0).toString(),
           ai_difficulty: aiResult.complexity,
           ai_notes: aiResult.notes,
+          total_sessions: aiResult.total_sessions || 1,
+          currency: currentCurrency,
           status: 'draft'
         })
         .select()
@@ -163,16 +324,13 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
 
       if (quoteError) throw quoteError;
 
-      // 2. Update client status, style and summary fields
+      // 2. Update client status and style
       await supabase
         .from('clients')
         .update({
           estilo: aiResult.style_detected !== 'No especificado' ? aiResult.style_detected : client.estilo,
           status: newStatus,
-          ai_suggested_price: aiResult.recommended_price,
-          ai_estimated_time: aiResult.estimated_hours.toString(),
-          ai_difficulty: aiResult.complexity,
-          ai_notes: aiResult.notes
+          currency: currentCurrency
         })
         .eq('id', client.id);
 
@@ -183,10 +341,7 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
         ...prev,
         estilo: aiResult.style_detected !== 'No especificado' ? aiResult.style_detected : prev.estilo,
         status: newStatus,
-        ai_suggested_price: aiResult.recommended_price,
-        ai_estimated_time: aiResult.estimated_hours.toString(),
-        ai_difficulty: aiResult.complexity,
-        ai_notes: aiResult.notes
+        currency: currentCurrency
       }));
 
       if (onUpdate) onUpdate();
@@ -212,21 +367,44 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
     
     setIsSendingEmail(true);
     try {
+      // 1. First, save any pending changes to the quote
+      const { error: saveError } = await supabase
+        .from('quotes')
+        .update({
+          price_artist: activeQuote.price_artist,
+          ai_estimated_time: activeQuote.ai_estimated_time,
+          ai_suggested_price: activeQuote.ai_suggested_price,
+          estilo: activeQuote.estilo,
+          ai_notes: activeQuote.ai_notes,
+          total_sessions: activeQuote.total_sessions,
+          currency: activeQuote.currency
+        })
+        .eq('id', activeQuote.id);
+
+      if (saveError) throw saveError;
+
+      // 2. Then send the email
       await sendEmail(client.id, 'quote', activeQuote.price_artist || activeQuote.ai_suggested_price);
       
-      // Update quote status and price
-      await supabase
+      // 3. Update quote status to 'sent'
+      const { error: quoteUpdateError } = await supabase
         .from('quotes')
         .update({ 
           status: 'sent',
-          price_artist: activeQuote.price_artist
         })
         .eq('id', activeQuote.id);
       
-      // Sync price_artist to client for Kanban
+      if (quoteUpdateError) {
+        console.error('Error updating quote status:', quoteUpdateError);
+        throw quoteUpdateError;
+      }
+      
+      // Update client currency
       await supabase
         .from('clients')
-        .update({ price_artist: activeQuote.price_artist || activeQuote.ai_suggested_price })
+        .update({ 
+          currency: activeQuote.currency
+        })
         .eq('id', client.id);
       
       setActiveQuote(prev => prev ? { ...prev, status: 'sent' } : null);
@@ -240,7 +418,11 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
       
       if (currentStatusIndex < paymentPendingIndex) {
         const newStatus = 'payment_pending';
-        setEditedClient(prev => ({ ...prev, status: newStatus, price_artist: activeQuote.price_artist || activeQuote.ai_suggested_price }));
+        setEditedClient(prev => ({ 
+          ...prev, 
+          status: newStatus, 
+          currency: activeQuote.currency
+        }));
         // Also update in Supabase
         await supabase.from('clients').update({ status: newStatus }).eq('id', client.id);
         if (onUpdate) onUpdate();
@@ -261,18 +443,40 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
     try {
       const newStatus = 'payment_confirmed';
       
-      // 1. Registrar el depósito en la tabla de pagos
-      const { error: paymentError } = await supabase
+      // Check if a payment record already exists for this client and type 'deposit'
+      const { data: existingPayment, error: fetchError } = await supabase
         .from('payments')
-        .insert({
-          client_id: client.id,
-          amount: editedClient.deposit_amount || 100,
-          payment_type: 'deposit',
-          payment_method: editedClient.payment_method || 'Transferencia',
-          notes: `Seña confirmada por el artista. Ref: ${editedClient.payment_reference || 'N/A'}`
-        });
+        .select('*')
+        .eq('client_id', client.id)
+        .eq('payment_type', 'deposit')
+        .maybeSingle(); // Use maybeSingle to handle no rows returned gracefully
+        
+      if (fetchError) throw fetchError;
 
-      if (paymentError) throw paymentError;
+      if (existingPayment) {
+        // Update existing payment
+        const { error: updateError } = await supabase
+          .from('payments')
+          .update({
+            notes: `Seña confirmada por el artista. Ref: ${editedClient.payment_reference || 'N/A'}`
+          })
+          .eq('id', existingPayment.id);
+          
+        if (updateError) throw updateError;
+      } else {
+        // 1. Registrar el depósito en la tabla de pagos
+        const { error: paymentError } = await supabase
+          .from('payments')
+          .insert({
+            client_id: client.id,
+            amount: editedClient.deposit_amount || 100,
+            payment_type: 'deposit',
+            payment_method: editedClient.payment_method || 'Transferencia',
+            notes: `Seña confirmada por el artista. Ref: ${editedClient.payment_reference || 'N/A'}`
+          });
+  
+        if (paymentError) throw paymentError;
+      }
 
       // 2. Actualizar el estado del cliente
       setEditedClient(prev => ({ ...prev, status: newStatus, deposit_paid: true }));
@@ -342,13 +546,21 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
       const { error } = await supabase
         .from('clients')
         .update({
+          nombre: editedClient.nombre,
+          email: editedClient.email,
+          telefono: editedClient.telefono,
+          instagram: editedClient.instagram,
+          idea_tatuaje: editedClient.idea_tatuaje,
+          zona: editedClient.zona,
+          tamano_cm: editedClient.tamano_cm,
+          estilo: editedClient.estilo,
           status: finalStatus,
           appointment_date: editedClient.appointment_date,
           appointment_time: editedClient.appointment_time,
           appointment_duration: editedClient.appointment_duration,
           deposit_paid: editedClient.deposit_paid,
-          deposit_amount: editedClient.deposit_amount || 100,
-          price_artist: activeQuote?.price_artist,
+          deposit_amount: editedClient.deposit_amount !== undefined ? editedClient.deposit_amount : 100,
+          currency: currentCurrency,
         })
         .eq('id', client.id);
 
@@ -356,23 +568,35 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
 
       // 2. Update active quote if it exists
       if (activeQuote) {
-        await supabase
+        const { error: quoteError } = await supabase
           .from('quotes')
           .update({
             price_artist: activeQuote.price_artist,
-            status: activeQuote.status
+            status: activeQuote.status,
+            ai_estimated_time: activeQuote.ai_estimated_time,
+            ai_suggested_price: activeQuote.ai_suggested_price,
+            estilo: activeQuote.estilo,
+            ai_notes: activeQuote.ai_notes,
+            total_sessions: activeQuote.total_sessions,
+            currency: currentCurrency
           })
           .eq('id', activeQuote.id);
+        
+        if (quoteError) {
+          console.error('Error updating quote:', quoteError);
+          throw quoteError;
+        }
       }
 
-      setEditedClient(prev => ({ ...prev, price_artist: activeQuote?.price_artist }));
+      setEditedClient(prev => ({ 
+        ...prev, 
+        currency: currentCurrency
+      }));
 
-      // Sincronizar con la tabla appointments si hay fecha y hora
+      // Sincronizar con la tabla appointments si hay fecha y hora manual
       if (editedClient.appointment_date && editedClient.appointment_time) {
         const fullDateTime = `${editedClient.appointment_date}T${editedClient.appointment_time}:00`;
         
-        // Intentamos actualizar la cita existente o crear una nueva
-        // Buscamos si ya existe una cita programada para este cliente
         const { data: existingAppts } = await supabase
           .from('appointments')
           .select('id')
@@ -381,7 +605,6 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
           .limit(1);
 
         if (existingAppts && existingAppts.length > 0) {
-          // Actualizar la existente
           await supabase
             .from('appointments')
             .update({
@@ -390,7 +613,6 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
             })
             .eq('id', existingAppts[0].id);
         } else {
-          // Crear una nueva
           await supabase
             .from('appointments')
             .insert({
@@ -400,21 +622,13 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
               status: 'scheduled'
             });
         }
-
-        // Log to messages table
-        await supabase
-          .from('messages')
-          .insert({
-            client_id: client.id,
-            message_type: 'scheduling',
-            channel: 'System',
-            content: `Cita actualizada/creada manualmente para el ${format(new Date(editedClient.appointment_date + 'T00:00:00'), 'dd/MM/yyyy')} a las ${editedClient.appointment_time} hs.`,
-            sent_at: new Date().toISOString()
-          });
-        
-        fetchMessages(); // Refrescar historial
       }
 
+      // Después de guardar, refrescamos las citas para asegurar que el estado local esté al día
+      await fetchAppointments();
+      await syncNextAppointment();
+
+      fetchMessages(); // Refrescar historial
       if (onUpdate) onUpdate();
       setIsEditing(false);
       toast.success('Cambios guardados con éxito');
@@ -450,7 +664,8 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
   const isPaymentConfirmed = 
     editedClient.status === 'payment_confirmed' || 
     editedClient.status === 'scheduled' || 
-    editedClient.status === 'completed';
+    editedClient.status === 'completed' ||
+    editedClient.deposit_paid;
 
   return (
     <motion.div
@@ -476,7 +691,7 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
             onClick={() => setIsEditing(!isEditing)}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-600"
           >
-            {isEditing ? <X className="w-5 h-5" /> : <Save className="w-5 h-5" />}
+            {isEditing ? <Save className="w-5 h-5" /> : <Edit className="w-5 h-5" />}
           </button>
           <button 
             onClick={handleDelete}
@@ -591,7 +806,7 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
                 </div>
                 <div>
                   <p className="text-xs text-purple-400 font-bold uppercase mb-1">Precio Sugerido</p>
-                  <p className="text-lg font-bold text-purple-900">${activeQuote?.ai_suggested_price || '0'}</p>
+                  <p className="text-lg font-bold text-purple-900">{currencySymbol}{activeQuote?.ai_suggested_price || '0'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-purple-400 font-bold uppercase mb-1">Estilo Detectado</p>
@@ -684,7 +899,7 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
                 Datos del Pago Reportado por el Cliente
               </h4>
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <p><span className="font-bold text-orange-300">Monto:</span> ${editedClient.deposit_amount || '-'}</p>
+                <p><span className="font-bold text-orange-300">Monto:</span> {currencySymbol}{editedClient.deposit_amount || '-'}</p>
                 <p><span className="font-bold text-orange-300">Nombre:</span> {editedClient.payment_name || '-'}</p>
                 <p><span className="font-bold text-orange-300">Método/Banco:</span> {editedClient.payment_method || '-'}</p>
                 <p><span className="font-bold text-orange-300">Referencia:</span> {editedClient.payment_reference || '-'}</p>
@@ -695,14 +910,49 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-gray-400 uppercase">Precio Final ($)</label>
+              <label className="text-[10px] font-bold text-gray-400 uppercase">Moneda de Cotización</label>
+              <select
+                value={currentCurrency}
+                onChange={(e) => {
+                  const newCurrency = e.target.value;
+                  setEditedClient(prev => ({ ...prev, currency: newCurrency }));
+                  setActiveQuote(prev => prev ? { ...prev, currency: newCurrency } : null);
+                }}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-400 outline-none text-white font-bold"
+              >
+                <option value="USD">USD ($) - Dólares</option>
+                <option value="EUR">EUR (€) - Euros</option>
+                <option value="GBP">GBP (£) - Libras</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase">Precio Sugerido ({currencySymbol})</label>
               <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <CurrencyIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <input
+                  type="number"
+                  value={activeQuote?.ai_suggested_price || ''}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setActiveQuote(prev => prev ? { ...prev, ai_suggested_price: val } : null);
+                  }}
+                  className="w-full bg-gray-800 border-none rounded-lg pl-10 pr-4 py-2 focus:ring-2 focus:ring-green-400 outline-none text-white"
+                  placeholder="Ej: 350"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase">Precio Final ({currencySymbol})</label>
+              <div className="relative">
+                <CurrencyIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                 <input
                   type="number"
                   value={activeQuote?.price_artist || ''}
-                  onChange={(e) => setActiveQuote(prev => prev ? { ...prev, price_artist: Number(e.target.value) } : null)}
-                  className="w-full bg-gray-800 border-none rounded-lg pl-10 pr-4 py-2 focus:ring-2 focus:ring-green-400 outline-none"
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setActiveQuote(prev => prev ? { ...prev, price_artist: val } : null);
+                  }}
+                  className="w-full bg-gray-800 border-none rounded-lg pl-10 pr-4 py-2 focus:ring-2 focus:ring-green-400 outline-none text-white"
                   placeholder="Ej: 400"
                 />
               </div>
@@ -712,6 +962,52 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
                   Cotización enviada
                 </p>
               )}
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase">Duración IA (Horas)</label>
+              <input
+                type="text"
+                value={activeQuote?.ai_estimated_time || ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setActiveQuote(prev => prev ? { ...prev, ai_estimated_time: val } : null);
+                }}
+                className="w-full bg-gray-800 border-none rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-400 outline-none text-white"
+                placeholder="Ej: 4"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase">Total de Sesiones</label>
+              <input
+                type="number"
+                value={activeQuote?.total_sessions || ''}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setActiveQuote(prev => prev ? { ...prev, total_sessions: val } : null);
+                }}
+                className="w-full bg-gray-800 border-none rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-400 outline-none text-white"
+                placeholder="Ej: 1"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase">Estilo Detectable</label>
+              <input
+                type="text"
+                value={activeQuote?.estilo || ''}
+                onChange={(e) => setActiveQuote(prev => prev ? { ...prev, estilo: e.target.value } : null)}
+                className="w-full bg-gray-800 border-none rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-400 outline-none text-white"
+                placeholder="Ej: Blackwork"
+              />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase">Nota Adicional</label>
+              <textarea
+                value={activeQuote?.ai_notes || ''}
+                onChange={(e) => setActiveQuote(prev => prev ? { ...prev, ai_notes: e.target.value } : null)}
+                className="w-full bg-gray-800 border-none rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-400 outline-none text-white"
+                placeholder="Notas adicionales sobre la cotización..."
+                rows={2}
+              />
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-gray-400 uppercase">Seña Pagada</label>
@@ -725,14 +1021,17 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
               </button>
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-gray-400 uppercase">Monto Seña ($)</label>
-              <input
-                type="number"
-                value={editedClient.deposit_amount ?? 100}
-                onChange={(e) => setEditedClient({ ...editedClient, deposit_amount: Number(e.target.value) })}
-                className="w-full bg-gray-800 border-none rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-400 outline-none text-white"
-                placeholder="Ej: 100"
-              />
+              <label className="text-[10px] font-bold text-gray-400 uppercase">Monto Seña ({currencySymbol})</label>
+              <div className="relative">
+                <CurrencyIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <input
+                  type="number"
+                  value={editedClient.deposit_amount ?? 100}
+                  onChange={(e) => setEditedClient({ ...editedClient, deposit_amount: Number(e.target.value) })}
+                  className="w-full bg-gray-800 border-none rounded-lg pl-10 pr-4 py-2 focus:ring-2 focus:ring-green-400 outline-none text-white"
+                  placeholder="Ej: 100"
+                />
+              </div>
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-gray-400 uppercase">Fecha de Cita</label>
@@ -767,6 +1066,152 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
           </div>
         </section>
 
+        {/* Sessions Management */}
+        <section className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-blue-600" />
+              <h3 className="font-bold text-gray-900">Gestión de Sesiones</h3>
+            </div>
+            <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+              {appointments.length} Sesiones
+            </div>
+          </div>
+
+          {!isPaymentConfirmed ? (
+            <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 text-center">
+              <Info className="w-8 h-8 text-blue-500 mx-auto mb-3" />
+              <h4 className="text-sm font-bold text-blue-900 mb-1">Pago no confirmado</h4>
+              <p className="text-xs text-blue-700 leading-relaxed">
+                Debes confirmar el pago de la seña antes de poder agendar sesiones para este cliente.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Add New Session Form */}
+              <div className="bg-white p-4 rounded-xl border border-gray-200 mb-6">
+                <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Agendar Nueva Sesión</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">Fecha</label>
+                    <input
+                      type="date"
+                      value={newApptDate}
+                      onChange={(e) => setNewApptDate(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">Hora</label>
+                    <input
+                      type="time"
+                      value={newApptTime}
+                      onChange={(e) => setNewApptTime(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">Duración (h)</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        value={newApptDuration}
+                        onChange={(e) => setNewApptDuration(Number(e.target.value))}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-400"
+                      />
+                      <button
+                        onClick={() => {
+                          handleAddAppointment(newApptDate, newApptTime, newApptDuration);
+                          setNewApptDate('');
+                          setNewApptTime('');
+                        }}
+                        className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sessions List */}
+              <div className="space-y-3">
+                {isLoadingAppointments ? (
+                  <div className="flex justify-center p-4">
+                    <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                  </div>
+                ) : appointments.length === 0 ? (
+                  <div className="bg-white rounded-xl p-6 text-center border border-dashed border-gray-200">
+                    <p className="text-xs text-gray-400 font-medium">No hay sesiones agendadas aún.</p>
+                  </div>
+                ) : (
+                  appointments.map((appt) => {
+                    const apptDate = new Date(appt.appointment_date);
+                    const isPast = apptDate < new Date() && appt.status === 'scheduled';
+                    
+                    return (
+                      <div 
+                        key={appt.id}
+                        className={`bg-white p-4 rounded-xl border transition-all flex items-center justify-between ${
+                          appt.status === 'completed' ? 'border-green-100 bg-green-50/30' : 
+                          isPast ? 'border-red-100 bg-red-50/30' : 'border-gray-100'
+                        }`}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className={`p-2 rounded-lg ${
+                            appt.status === 'completed' ? 'bg-green-100 text-green-600' : 
+                            isPast ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
+                          }`}>
+                            <Calendar className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-gray-900">
+                              {format(apptDate, "eeee d 'de' MMMM", { locale: es })}
+                            </p>
+                            <div className="flex items-center gap-3 mt-0.5">
+                              <span className="text-xs text-gray-500 flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {format(apptDate, 'HH:mm')} hs ({appt.duration}h)
+                              </span>
+                              <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                                appt.status === 'completed' ? 'bg-green-200 text-green-800' : 
+                                appt.status === 'canceled' ? 'bg-gray-200 text-gray-800' : 
+                                isPast ? 'bg-red-200 text-red-800' : 'bg-blue-200 text-blue-800'
+                              }`}>
+                                {appt.status === 'completed' ? 'Completada' : 
+                                 appt.status === 'canceled' ? 'Cancelada' : 
+                                 isPast ? 'Pendiente (Atrasada)' : 'Programada'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleToggleAppointmentStatus(appt.id, appt.status)}
+                            className={`p-2 rounded-lg transition-colors ${
+                              appt.status === 'completed' ? 'text-gray-400 hover:bg-gray-100' : 'text-green-600 hover:bg-green-50'
+                            }`}
+                            title={appt.status === 'completed' ? 'Marcar como pendiente' : 'Marcar como completada'}
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteAppointment(appt.id)}
+                            className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Eliminar sesión"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </>
+          )}
+        </section>
+
         {/* Payments History */}
         <section className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
           <div className="flex items-center justify-between mb-4">
@@ -775,7 +1220,7 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
               <h3 className="font-bold text-gray-900">Historial de Pagos</h3>
             </div>
             <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-              Total: ${payments.reduce((acc, p) => acc + Number(p.amount), 0)}
+              Total: {currencySymbol}{payments.reduce((acc, p) => acc + Number(p.amount), 0)}
             </div>
           </div>
           <div className="space-y-3">
@@ -809,7 +1254,7 @@ export default function ClientDetailPanel({ client, onClose, onUpdate }: ClientD
                     </div>
                   </div>
                   <div className="text-sm font-black text-gray-900">
-                    ${payment.amount}
+                    {currencySymbol}{payment.amount}
                   </div>
                 </div>
               ))

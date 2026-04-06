@@ -124,6 +124,7 @@ export default function ClientsList({ onSelectClient }: ClientsListProps) {
               <tr className="border-b border-gray-50">
                 <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Cliente</th>
                 <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Contacto</th>
+                <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Canal</th>
                 <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Estado</th>
                 <th className="hidden md:table-cell px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Proyecto</th>
                 <th className="px-6 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Acciones</th>
@@ -132,7 +133,7 @@ export default function ClientsList({ onSelectClient }: ClientsListProps) {
             <tbody className="divide-y divide-gray-50">
               {paginatedClients.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-20 text-center">
+                  <td colSpan={6} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center gap-2">
                       <User className="w-12 h-12 text-gray-200" />
                       <p className="text-gray-400 font-medium">No se encontraron clientes</p>
@@ -172,6 +173,11 @@ export default function ClientsList({ onSelectClient }: ClientsListProps) {
                           </div>
                         )}
                       </div>
+                    </td>
+                    <td className="px-6 py-5">
+                      <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded uppercase tracking-wider">
+                        {client.channel}
+                      </span>
                     </td>
                     <td className="px-6 py-5">
                       <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${

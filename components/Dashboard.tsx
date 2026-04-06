@@ -283,7 +283,7 @@ export default function Dashboard() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
               >
-                <LeadForm />
+                <LeadForm defaultChannel="Manual" />
               </motion.div>
             )}
           </AnimatePresence>

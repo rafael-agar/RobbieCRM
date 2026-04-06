@@ -14,12 +14,19 @@ interface PaymentModalProps {
 }
 
 export default function PaymentModal({ client, onClose, onSuccess }: PaymentModalProps) {
+  const activeQuote = client.quotes?.sort((a: any, b: any) => 
+    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  )[0];
+  const totalPrice = activeQuote?.price_artist || activeQuote?.ai_suggested_price || 0;
+
   const [amount, setAmount] = useState<number>(
-    (client.price_artist || client.ai_suggested_price || 0) - (client.deposit_amount || 0)
+    totalPrice - (client.deposit_amount || 0)
   );
   const [method, setMethod] = useState('Efectivo');
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  const currencySymbol = client.currency === 'EUR' ? '€' : client.currency === 'GBP' ? '£' : '$';
 
   const handleSavePayment = async () => {
     if (amount <= 0) {
@@ -90,11 +97,11 @@ export default function PaymentModal({ client, onClose, onSuccess }: PaymentModa
             <div className="text-xs text-blue-800 leading-relaxed">
               <p className="font-bold mb-1 text-sm">Resumen de Cuenta</p>
               <div className="space-y-1 opacity-90">
-                <p className="flex justify-between">Precio Total: <span className="font-bold">${client.price_artist || client.ai_suggested_price || 0}</span></p>
-                <p className="flex justify-between">Seña Pagada: <span className="font-bold">-${client.deposit_amount || 0}</span></p>
+                <p className="flex justify-between">Precio Total: <span className="font-bold">{currencySymbol}{totalPrice}</span></p>
+                <p className="flex justify-between">Seña Pagada: <span className="font-bold">-{currencySymbol}{client.deposit_amount || 0}</span></p>
                 <div className="mt-2 pt-2 border-t border-blue-200 flex justify-between text-sm">
                   <span>Restante Sugerido:</span>
-                  <span className="font-black">${(client.price_artist || client.ai_suggested_price || 0) - (client.deposit_amount || 0)}</span>
+                  <span className="font-black">{currencySymbol}{totalPrice - (client.deposit_amount || 0)}</span>
                 </div>
               </div>
             </div>
@@ -102,9 +109,11 @@ export default function PaymentModal({ client, onClose, onSuccess }: PaymentModa
 
           <div className="space-y-5">
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Monto a Pagar ($)</label>
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Monto a Pagar ({currencySymbol})</label>
               <div className="relative group">
-                <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-black transition-colors" />
+                {client.currency === 'EUR' ? <span className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-black transition-colors font-bold flex items-center justify-center">€</span> :
+                 client.currency === 'GBP' ? <span className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-black transition-colors font-bold flex items-center justify-center">£</span> :
+                 <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-black transition-colors" />}
                 <input
                   type="number"
                   value={amount}

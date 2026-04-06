@@ -10,6 +10,8 @@ export type KanbanStatus =
   | 'completed' 
   | 'follow_up';
 
+export type Channel = 'Website' | 'Manual' | 'WhatsApp' | 'Instagram' | 'Facebook';
+
 export interface Client {
   id: string;
   nombre: string;
@@ -22,12 +24,7 @@ export interface Client {
   estilo?: string;
   imagen_referencia?: string;
   status: KanbanStatus;
-  // Summary fields from the active quote
-  ai_suggested_price?: number;
-  ai_estimated_time?: string;
-  ai_difficulty?: string;
-  ai_notes?: string;
-  price_artist?: number;
+  channel: Channel;
   // Appointment/Payment fields
   appointment_date?: string;
   appointment_time?: string;
@@ -38,7 +35,9 @@ export interface Client {
   payment_date?: string;
   payment_reference?: string;
   payment_method?: string;
+  currency?: string;
   created_at: string;
+  quotes?: Quote[];
 }
 
 export interface Quote {
@@ -54,6 +53,8 @@ export interface Quote {
   ai_difficulty: 'Baja' | 'Media' | 'Alta';
   ai_notes?: string;
   price_artist?: number;
+  total_sessions?: number;
+  currency?: string;
   status: 'draft' | 'sent' | 'accepted' | 'rejected';
   created_at: string;
 }
@@ -101,6 +102,7 @@ export interface AIAssessment {
   recommended_price: number;
   notes: string;
   style_detected: string;
+  total_sessions: number;
 }
 
 export const KANBAN_COLUMNS: { id: KanbanStatus; label: string; color: string }[] = [
